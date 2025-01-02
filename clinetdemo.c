@@ -86,8 +86,15 @@ struct _mb_master_clientinfo *_mb_get_next_open_client_connection(mb_master *m)
     }
 }
 
+enum
+{
+    NOERROR = 0,
+    E_OUT_OF_SLOTS = -1,
+    E_CONNECT = -2,
+};
+
 /* connects to client, and adds it into the masters info */
-void mb_master_add_client_connection(mb_master *m, char *addr, int port, mb_byte client_id)
+int mb_master_add_client_connection(mb_master *m, char *addr, int port, mb_byte client_id)
 {
     struct _mb_master_clientinfo *c = _mb_get_next_open_client_connection(m);
     memset(c, 0, sizeof(struct _mb_master_clientinfo));
@@ -96,7 +103,7 @@ void mb_master_add_client_connection(mb_master *m, char *addr, int port, mb_byte
     {
         // TODO: Handle better then crashing out
         puts("out of slots for clients!");
-        exit(EXIT_FAILURE);
+        return E_OUT_OF_SLOTS;
     }
 
     c->fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -113,22 +120,24 @@ void mb_master_add_client_connection(mb_master *m, char *addr, int port, mb_byte
     c->addr.sin_port = htons(port);
     c->addrlen = sizeof(struct sockaddr_in);
 
-
     if (0 > connect(c->fd, (struct sockaddr *)&c->addr, c->addrlen))
     {
         // TODO: Handle better then crashing out
         perror("connect");
-        exit(EXIT_FAILURE);
+        return E_CONNECT;
     }
 
     puts("Clinet Connected");
+    return NOERROR;
 }
 
 int main(int argc, char *argv[])
 {
     mb_master m;
     memset(&m, 0, sizeof(mb_master));
-    mb_master_add_client_connection(&m, "127.0.0.1", 502, 1);
+    if (0 > mb_master_add_client_connection(&m, "127.0.0.1", 502, 1))
+    {
+        printf("Failed to add clinet!\n");
+    }
 
-    puts("program done");
 }
