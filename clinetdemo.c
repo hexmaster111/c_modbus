@@ -1,5 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
 #include "modbus.h"
 
 int main(int argc, char *argv[])
@@ -35,6 +38,6 @@ int main(int argc, char *argv[])
             break;
         }
 
-        sleep(5);
+        sleep(1);
     }
 }
