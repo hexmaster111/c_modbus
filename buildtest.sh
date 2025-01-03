@@ -1,3 +1,3 @@
 #!/bin/bash
 
-cc clinetdemo.c -o clinetdemo -lm -O0 -ggdb -fsanitize=address,leak
+cc clinetdemo.c modbus.c -o clinetdemo -lm -O0 -ggdb -fsanitize=address,leak
