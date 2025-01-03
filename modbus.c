@@ -286,7 +286,13 @@ mb_error mb_master_write_multiple_registers(
     int client,
     mb_i16 first_register,
     mb_i16 *registers,
-    int amount)
+    int register_count)
 {
-    
+    int wblen = 7 + 1 + sizeof(mb_i16) + sizeof(mb_i16) + (register_count * sizeof(mb_i16));
+    // header + opcode + first reg addr + reg count + bytecount |=> + (register_count * sizeof(i16))
+    mb_byte write_buffer[wblen];
+    memset(write_buffer, 0, sizeof(write_buffer));
+    //https://www.fernhillsoftware.com/help/drivers/modbus/modbus-protocol.html#writeMultipleRegisters
+    abort(0&&"NOT IMPL");
+    puts("WRITE");
 }
