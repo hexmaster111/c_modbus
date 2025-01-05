@@ -2,12 +2,14 @@
 # THIS IS A WORK IN PROGRESS
 - TODO yet
 - [X] Read Holding Registers  (3)
-- [] Write Multiple Registers (16)
+- [X] Write Multiple Registers (16)
 - [] Read Discrete Inputs     (2)
 - [] Read Coils
 - [] Write Single Coil
 - [] Write Multiple Coils
 - [] Write Single Register
+
+- [] Read and write error function code handling
 
 
 # Requrements

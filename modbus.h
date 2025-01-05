@@ -61,7 +61,8 @@ mb_error mb_master_read_holding_registers(
     mb_i16 register_start,        // the register to start reading from
     mb_i16 quantity_of_registers, // how many registers we want to read
     mb_i16 *out_registers_array,  // where to store the resaults
-    int registers_array_len);     // the length of where to store the resaults
+    int registers_array_len       // the length of where to store the resaults
+);
 
 /* reads values from registers array */
 mb_error mb_master_write_multiple_registers(
