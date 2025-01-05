@@ -288,11 +288,56 @@ mb_error mb_master_write_multiple_registers(
     mb_i16 *registers,
     int register_count)
 {
-    int wblen = 7 + 1 + sizeof(mb_i16) + sizeof(mb_i16) + (register_count * sizeof(mb_i16));
+    int wblen = 7 + 1 + sizeof(mb_i16) + sizeof(mb_i16) + sizeof(mb_byte) + (register_count * sizeof(mb_i16));
     // header + opcode + first reg addr + reg count + bytecount |=> + (register_count * sizeof(i16))
     mb_byte write_buffer[wblen];
-    memset(write_buffer, 0, sizeof(write_buffer));
-    //https://www.fernhillsoftware.com/help/drivers/modbus/modbus-protocol.html#writeMultipleRegisters
-    abort(0&&"NOT IMPL");
-    puts("WRITE");
+
+    memset(write_buffer, 0xFF, sizeof(write_buffer));
+    struct _mb_master_clientinfo *ci = &m->connection_info[client];
+    _mb_header(ci->header, write_buffer, sizeof(write_buffer));
+
+    write_buffer[7] = 0x10; /* Write Reg func code */
+
+    _mb_buffer_add_i16(&write_buffer[8], first_register);  //  8  9
+    _mb_buffer_add_i16(&write_buffer[10], register_count); // 10 11
+    write_buffer[12] = register_count * sizeof(mb_i16);    /* bytes of data to come */
+
+    for (int i = 0; i < register_count; i++)
+    {
+        int loc = 13 + (i * sizeof(mb_i16));
+        _mb_buffer_add_i16(&write_buffer[loc], registers[i]);
+    }
+
+#ifdef DEBUG_PRINT_TX_BUFFER
+    _mb_dump_buffer(write_buffer, sizeof(write_buffer), "write multi registers tx");
+#endif // DEBUG_PRINT_TX_BUFFER
+
+    if (0 > _mb_master_write(ci->fd, write_buffer, sizeof(write_buffer)))
+    {
+        return -1;
+    }
+
+    // at this point we have written all the data, now we need to read back and make sure it wrote correctly
+
+    mb_byte read_buffer[7 + 5]; // header + responce data
+    mb_ap_header read_header;
+    memset(&read_header, 0, sizeof(mb_ap_header));
+
+    if (0 > _mb_master_read_msg(ci->fd, read_buffer, sizeof(read_buffer), &read_header))
+    {
+
+        puts("_mb_master_read_msg 0 > rres");
+        return -1;
+    }
+
+    // could be an exception code OR responce
+
+    //TODO: if (returned func code == 9) { return error, perhaps a -2 to indcate an exception, or change return type? }
+
+#ifdef DEBUG_PRINT_RX_BUFFER
+    _mb_dump_buffer(read_buffer, sizeof(read_buffer), "write responce RX");
+#endif // DEBUG_PRINT_RX_BUFFER
+    ci->header.transaction_identifier += 1;
+
+    return 0;
 }

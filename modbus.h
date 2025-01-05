@@ -27,7 +27,9 @@ typedef struct mb_ap_header // pg: 5/46
 //     NonBlocking = 1 << 0,
 // } mb_master_options;
 
+#ifndef MB_MAX_CLIENTS_PER_MASTER
 #define MB_MAX_CLIENTS_PER_MASTER (5)
+#endif
 
 /* This structure defines the state that our master needs */
 typedef struct mb_master
