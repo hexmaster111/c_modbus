@@ -5,7 +5,7 @@
 #include <poll.h>
 #include "modbus.h"
 
-#define REGISTER_COUNT (24)
+#define REGISTER_COUNT (100)
 mb_i16 g_registers[REGISTER_COUNT];
 int g_reghash;
 
@@ -18,6 +18,12 @@ int modified_bernstein(int16_t key)
 
 int main(int argc, char *argv[])
 {
+ 
+    for (int i = 0; i < REGISTER_COUNT; i++)
+    {
+        g_registers[i] = i + 1;
+    }
+
     mb_client svr = {0};
     mb_svr_init(&svr, g_registers, REGISTER_COUNT, 5003, 1);
     printf("Server Listing\n");
@@ -49,10 +55,10 @@ int main(int argc, char *argv[])
 
                 printf("%4d\t", g_registers[i]);
             }
+            printf("\n");
+
             g_reghash = hashnow;
         }
         // sleep(1);
-        
-        
     }
 }

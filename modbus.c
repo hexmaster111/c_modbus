@@ -16,6 +16,8 @@
 
 #include "modbus.h"
 
+mb_error _mb_svr_write_illeagle_address(mb_client *sv, struct _mb_serverinfo *s);
+
 /* PRIVATE, gets the next client info from a master context  or NULL if none left */
 static struct _mb_clientinfo *_mb_get_next_open_client_connection(mb_server *m)
 {
@@ -35,7 +37,7 @@ static struct _mb_clientinfo *_mb_get_next_open_client_connection(mb_server *m)
     connects to client, and adds it into the masters info
     returns error OR the newly added clients client idx
 */
-int mb_master_add_client_connection(mb_server *m, char *addr, int port, mb_byte client_id)
+int mb_master_add_client_connection(mb_server *m, char *addr, int port, mb_i8 client_id)
 {
     struct _mb_clientinfo *c = _mb_get_next_open_client_connection(m);
     memset(c, 0, sizeof(struct _mb_clientinfo));
@@ -81,7 +83,7 @@ int mb_master_add_client_connection(mb_server *m, char *addr, int port, mb_byte 
    -1 : error
     0 : ok
 */
-static mb_error _mb_master_write(int fd, mb_byte *data, int datalen)
+static mb_error _mb_master_write(int fd, mb_i8 *data, int datalen)
 {
     int out = 0;
     do
@@ -101,17 +103,17 @@ static mb_error _mb_master_write(int fd, mb_byte *data, int datalen)
 }
 
 /* PRIVATE, converts and add i16 to dst */
-static void _mb_buffer_add_i16(mb_byte *dst, mb_i16 value)
+static void _mb_buffer_add_i16(mb_i8 *dst, mb_i16 value)
 {
     dst[0] = value >> 8;
     dst[1] = value;
 }
 
-static inline mb_i16 _mb_buffer_out_i16(mb_byte *src) { return src[1] | src[0] << 8; }
+static inline mb_i16 _mb_buffer_out_i16(mb_i8 *src) { return src[1] | src[0] << 8; }
 
-static mb_ap_header _mb_header_from_buffer(mb_byte *b_in, int len)
+static mb_ap_header _mb_header_from_buffer(mb_i8 *b_in, int len)
 {
-    mb_byte *b = b_in; /* im not sure that i need to copy this address here... */
+    mb_i8 *b = b_in; /* im not sure that i need to copy this address here... */
 
     const int headerlen = 7;
     assert(headerlen >= len && "reading a header needs atleast 7 bytes!");
@@ -136,7 +138,7 @@ static mb_error _mb_read_header(
 )
 {
     const int headerlen = 7;
-    mb_byte headerdata[headerlen];
+    mb_i8 headerdata[headerlen];
     memset(headerdata, 0, sizeof(headerdata));
 
     // read in the MB AP HEADER, then read remainder of data
@@ -157,7 +159,7 @@ static mb_error _mb_read_header(
 /* PRIVATE, reads full modbus message, saves read header into header and message data into buf */
 static mb_error _mb_master_read_msg(
     int fd,
-    mb_byte *buf,
+    mb_i8 *buf,
     int buflen,
     mb_ap_header *header)
 {
@@ -188,7 +190,7 @@ static mb_error _mb_master_read_msg(
 }
 
 /* PRIVATE, adds a modbus header into array pointed to by dst */
-static void _mb_header(mb_ap_header h, mb_byte *dst, size_t len)
+static void _mb_header(mb_ap_header h, mb_i8 *dst, size_t len)
 {
     assert(7 < len && "dst len must be larger then a header!");
     // 0, 1 transaction id
@@ -211,7 +213,7 @@ static void _mb_header(mb_ap_header h, mb_byte *dst, size_t len)
 }
 
 /* PRIVATE, dumps buffer out into console, kinda formated like a c string, labeld with msg */
-static void _mb_dump_buffer(mb_byte *b, int len, const char *msg)
+static void _mb_dump_buffer(mb_i8 *b, int len, const char *msg)
 {
     printf("%s", msg);
 
@@ -237,7 +239,7 @@ mb_error mb_master_read_holding_registers(
     //    0     1     2     3     4     5     6     7     8     9     A     B
     // [trans id]  [proto id]  [len come] [UNIT] [RHR] [start addr] [end addr]
 
-    mb_byte write_buffer[12]; //  = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+    mb_i8 write_buffer[12]; //  = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
     struct _mb_clientinfo *mbci = &m->connection_info[client_slot];
 
     _mb_header(mbci->header, write_buffer, sizeof(write_buffer));
@@ -256,7 +258,7 @@ mb_error mb_master_read_holding_registers(
         return -1;
     }
 
-    mb_byte read_buffer[2 + (quantity_of_registers * 2)];
+    mb_i8 read_buffer[2 + (quantity_of_registers * 2)];
     mb_ap_header read_header;
     memset(&read_header, 0, sizeof(mb_ap_header));
 
@@ -272,7 +274,7 @@ mb_error mb_master_read_holding_registers(
     _mb_dump_buffer(read_buffer, sizeof(read_buffer), "read holding reg rx");
 #endif
 
-    mb_byte *ittr = read_buffer + 2 /* + 2 to skip func code and byte count*/;
+    mb_i8 *ittr = read_buffer + 2 /* + 2 to skip func code and byte count*/;
 
     for (int i = 0; i < quantity_of_registers; i++)
     {
@@ -290,9 +292,9 @@ mb_error mb_master_write_multiple_registers(
     mb_i16 *registers,
     int register_count)
 {
-    int wblen = 7 + 1 + sizeof(mb_i16) + sizeof(mb_i16) + sizeof(mb_byte) + (register_count * sizeof(mb_i16));
+    int wblen = 7 + 1 + sizeof(mb_i16) + sizeof(mb_i16) + sizeof(mb_i8) + (register_count * sizeof(mb_i16));
     // header + opcode + first reg addr + reg count + bytecount |=> + (register_count * sizeof(i16))
-    mb_byte write_buffer[wblen];
+    mb_i8 write_buffer[wblen];
 
     memset(write_buffer, 0xFF, sizeof(write_buffer));
     struct _mb_clientinfo *ci = &m->connection_info[client];
@@ -321,7 +323,7 @@ mb_error mb_master_write_multiple_registers(
 
     // at this point we have written all the data, now we need to read back and make sure it wrote correctly
 
-    mb_byte read_buffer[7 + 5]; // header + responce data
+    mb_i8 read_buffer[7 + 5]; // header + responce data
     mb_ap_header read_header;
     memset(&read_header, 0, sizeof(mb_ap_header));
 
@@ -415,7 +417,7 @@ mb_error mb_svr_init(mb_client *s, int16_t *registers, mb_i16 registersCount, in
 
 mb_error _mb_svr_read_i16(struct _mb_serverinfo *s, mb_i16 *out)
 {
-    mb_byte rd[2];
+    mb_i8 rd[2];
 
     int in = 0;
     do
@@ -436,11 +438,6 @@ mb_error _mb_svr_read_i16(struct _mb_serverinfo *s, mb_i16 *out)
     return 0;
 }
 
-mb_error _mb_svr_write_illeagle_address(mb_client *sv, struct _mb_serverinfo *s)
-{
-    assert(0 && "not impl _mb_svr_write_illeagle_address");
-}
-
 mb_error _mb_svr_do_read_holding_registers(mb_client *sv, struct _mb_serverinfo *s)
 {
     // read holding registers params in stream   [i16 - first address] [i16 - count]
@@ -452,9 +449,6 @@ mb_error _mb_svr_do_read_holding_registers(mb_client *sv, struct _mb_serverinfo 
     if (0 > _mb_svr_read_i16(s, &reg_count))
         return -1;
 
-    // all the data is now streamd out, and we can build and send our responce
-    printf("first %d   count %d\n", first_addr, reg_count);
-
     if (first_addr + reg_count > sv->register_count)
     {
         if (0 > _mb_svr_write_illeagle_address(sv, s))
@@ -463,26 +457,139 @@ mb_error _mb_svr_do_read_holding_registers(mb_client *sv, struct _mb_serverinfo 
         }
     }
 
-
-    mb_byte outbuffer[7+reg_count * sizeof(mb_i16)];
+    // [header 7] [func code 1] [byte count 1] [data....]
+    mb_i8 outbuffer[7 + 1 + 1 + reg_count * sizeof(mb_i16)];
     memset(outbuffer, 0, sizeof(outbuffer));
 
-    _mb_header(s->header,outbuffer, sizeof(outbuffer));
-    assert("NOT DONE"&0);
+    _mb_header(s->header, outbuffer, sizeof(outbuffer));
 
+    outbuffer[7] = 0x03;
+    outbuffer[8] = reg_count * sizeof(mb_i16);
 
-    for (int i = 0; i < reg_count; i = 2)
+    for (int i = 0; i < reg_count; i++)
     {
-        mb_i16 *ittr = &sv->registers[first_addr + i];
-        outbuffer[i+8] = *ittr;
-        outbuffer[i+8 + 1] = *ittr >> 8;
+        _mb_buffer_add_i16(&outbuffer[(i * 2) + 9], sv->registers[first_addr + i]);
     }
 
-    
+#ifdef MB_DEBUG_DO_READ_HOLDING_REG_DUMP_BUFFER
+    _mb_dump_buffer(outbuffer, sizeof(outbuffer), "DO READ HOLDING REG TX");
+#endif
+
+    if (0 > _mb_master_write(s->fd, outbuffer, sizeof(outbuffer)))
+    {
+        return -1;
+    }
+}
+
+mb_error _mb_svr_write_exception_code(int fd, mb_i8 except, mb_ap_header header)
+{
+
+    mb_i8 buff[7 + 1 + 1]; // header + func + exception code
+    memset(buff, 0, sizeof(buff));
+    _mb_header(header, buff, sizeof(buff));
+
+    int to_write = sizeof(buff);
+
+    do
+    {
+        int w = write(fd, buff, to_write);
+        if (0 > w)
+            return -1;
+        to_write -= w;
+    } while (to_write > 0);
+
+    return 0;
+}
+
+mb_error _mb_svr_empty_stream(mb_client *sv, struct _mb_serverinfo *s)
+{
+    /* there should be 2 less then the headers len bytes left to read */
+    int want = s->header.length - 2;
+    char trash[want];
+    int in = 0;
+
+    do
+    {
+        int r = read(s->fd, trash, want - in);
+        if (0 > r)
+        {
+            perror("read");
+            return -1;
+        }
+
+        in += r;
+
+    } while (want > in);
+
+    return 0;
+}
+
+mb_error _mb_svr_write_illeagle_address(mb_client *sv, struct _mb_serverinfo *s)
+{
+    puts("ILLEAGLE ADDRESS OR REQUEST TOO LARGE");
+    if (0 > _mb_svr_empty_stream(sv, s))
+        return -1;
+
+    if (0 > _mb_svr_write_exception_code(s->fd, 0x02, s->header))
+        return -1;
+}
+
+mb_error _mb_svr_write_function_code_not_supported(mb_client *sv, struct _mb_serverinfo *s)
+{
+
+    if (0 > _mb_svr_empty_stream(sv, s))
+        return -1;
+
+    if (0 > _mb_svr_write_exception_code(s->fd, 0x01, s->header))
+        return -1;
 }
 
 mb_error _mb_svr_do_write_holding_registers(mb_client *sv, struct _mb_serverinfo *s)
 {
+    assert(0 && "This is a work in progress! This method seems to fail with 'read: resource temp unavalable' ");
+
+    if (0 > _mb_svr_empty_stream(sv, s))
+        return -1;
+
+    // [i16 first reg addr] [i16 register count] [i8 byte count |=> ] [... data ...]
+
+    mb_i16 first_reg_addr, reg_count;
+    mb_i8 remainder;
+
+    int want = 5;
+    mb_i8 buf[want];
+
+    do
+    {
+        int r = read(s->fd, buf, want);
+        printf("got %d bytes\n", r);
+        if (0 > r)
+        {
+            perror("read");
+            return -1;
+        }
+        want -= r;
+    } while (want > 0);
+
+    printf("trashing the rest\n");
+
+    first_reg_addr = _mb_buffer_out_i16(buf);
+    reg_count = _mb_buffer_out_i16(buf + sizeof(mb_i16));
+    remainder = *(buf + sizeof(mb_i16) + sizeof(mb_i16));
+
+    mb_i8 trash[remainder];
+    do
+    {
+        int r = read(s->fd, trash, remainder);
+        if (0 > r)
+        {
+            perror("read");
+            return -1;
+        }
+        remainder -= r;
+    } while (remainder > 0);
+
+    return 0;
 }
 
 mb_error _mb_svr_read_and_do_command(mb_client *sv, struct _mb_serverinfo *s)
@@ -519,38 +626,29 @@ mb_error _mb_svr_read_and_do_command(mb_client *sv, struct _mb_serverinfo *s)
         return -1;
     }
 
-    printf("got fncode %d\n", funccode);
+    mb_error handle_err;
 
     switch (funccode)
     {
     case 3:
-        _mb_svr_do_read_holding_registers( sv,s);
+        handle_err = _mb_svr_do_read_holding_registers(sv, s);
         break;
-    case 15:
-        _mb_svr_do_write_holding_registers(sv,s);
+    case 16:
+        handle_err = _mb_svr_do_write_holding_registers(sv, s);
         break;
+
+    default:
+        printf("UNSUPPORTED FN CODE %d\n", funccode);
+        handle_err = _mb_svr_write_function_code_not_supported(sv, s);
     }
 
-    // just here to get all the bytes out
-    // char tmprdbuf[header.length];
-    // in = 2;
-    // do
-    // {
-    //     int n = read(s->fd, &tmprdbuf, sizeof(tmprdbuf));
-    //     if (n == -1 && (errno == EAGAIN || errno == EWOULDBLOCK))
-    //         return 0; /* nothing to read */
+    if (0 > handle_err)
+    {
+        return -1;
+    }
 
-    //     if (n == 0 || 0 > n)
-    //     {
-
-    //         perror("read");
-    //         return -1;
-    //     }
-
-    //     in += n;
-    // } while (header.length > in);
-
-    // printf("dumped %d bytes\n", header.length);
+    // at this point, all the data is out of the socket
+    return 0;
 }
 
 mb_error mb_svr_process_clients(mb_client *s)

@@ -3,7 +3,7 @@
 
 #include <netinet/in.h>
 
-typedef unsigned char mb_byte;
+typedef unsigned char mb_i8;
 typedef unsigned short int mb_i16;
 
 /*
@@ -18,7 +18,7 @@ typedef struct mb_ap_header // pg: 5/46
     mb_i16 transaction_identifier;
     mb_i16 protocal_identifier;
     mb_i16 length;
-    mb_byte unit_identifier;
+    mb_i8 unit_identifier;
 } mb_ap_header;
 
 /*   Options that a mb master can have   */
@@ -52,7 +52,7 @@ typedef struct mb_server
     connects to client, and adds it into the masters info
     returns error OR the newly added clients client idx
 */
-int mb_master_add_client_connection(mb_server *m, char *addr, int port, mb_byte client_id);
+int mb_master_add_client_connection(mb_server *m, char *addr, int port, mb_i8 client_id);
 
 /* stores values into register array */
 mb_error mb_master_read_holding_registers(
