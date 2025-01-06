@@ -9,7 +9,8 @@
                 "-fsanitize=address",
                 "-g",
                 "modbus.c",
-                "clinetdemo.c",
+                // "clinetdemo.c",
+                "serverdemo.c",
                 "-o",
                 "${fileDirname}/${fileBasenameNoExtension}"
             ],

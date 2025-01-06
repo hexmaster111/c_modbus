@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <netdb.h>
 #include <netinet/in.h>
@@ -9,13 +10,14 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <arpa/inet.h>
+#include <errno.h>
 
 #include <assert.h>
 
 #include "modbus.h"
 
 /* PRIVATE, gets the next client info from a master context  or NULL if none left */
-static struct _mb_master_clientinfo *_mb_get_next_open_client_connection(mb_master *m)
+static struct _mb_clientinfo *_mb_get_next_open_client_connection(mb_server *m)
 {
 
     for (int i = 0; i < MB_MAX_CLIENTS_PER_MASTER; i++)
@@ -33,10 +35,10 @@ static struct _mb_master_clientinfo *_mb_get_next_open_client_connection(mb_mast
     connects to client, and adds it into the masters info
     returns error OR the newly added clients client idx
 */
-mb_error mb_master_add_client_connection(mb_master *m, char *addr, int port, mb_byte client_id)
+int mb_master_add_client_connection(mb_server *m, char *addr, int port, mb_byte client_id)
 {
-    struct _mb_master_clientinfo *c = _mb_get_next_open_client_connection(m);
-    memset(c, 0, sizeof(struct _mb_master_clientinfo));
+    struct _mb_clientinfo *c = _mb_get_next_open_client_connection(m);
+    memset(c, 0, sizeof(struct _mb_clientinfo));
 
     if (c == NULL)
     {
@@ -225,7 +227,7 @@ static void _mb_dump_buffer(mb_byte *b, int len, const char *msg)
 
 /* Writes and reads from a connected client designated by client slot, stores values into register array */
 mb_error mb_master_read_holding_registers(
-    mb_master *m,
+    mb_server *m,
     int client_slot,
     mb_i16 register_start,
     mb_i16 quantity_of_registers,
@@ -236,7 +238,7 @@ mb_error mb_master_read_holding_registers(
     // [trans id]  [proto id]  [len come] [UNIT] [RHR] [start addr] [end addr]
 
     mb_byte write_buffer[12]; //  = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-    struct _mb_master_clientinfo *mbci = &m->connection_info[client_slot];
+    struct _mb_clientinfo *mbci = &m->connection_info[client_slot];
 
     _mb_header(mbci->header, write_buffer, sizeof(write_buffer));
 
@@ -282,7 +284,7 @@ mb_error mb_master_read_holding_registers(
 }
 
 mb_error mb_master_write_multiple_registers(
-    mb_master *m,
+    mb_server *m,
     int client,
     mb_i16 first_register,
     mb_i16 *registers,
@@ -293,7 +295,7 @@ mb_error mb_master_write_multiple_registers(
     mb_byte write_buffer[wblen];
 
     memset(write_buffer, 0xFF, sizeof(write_buffer));
-    struct _mb_master_clientinfo *ci = &m->connection_info[client];
+    struct _mb_clientinfo *ci = &m->connection_info[client];
     _mb_header(ci->header, write_buffer, sizeof(write_buffer));
 
     write_buffer[7] = 0x10; /* Write Reg func code */
@@ -332,7 +334,7 @@ mb_error mb_master_write_multiple_registers(
 
     // could be an exception code OR responce
 
-    //TODO: if (returned func code == 9) { return error, perhaps a -2 to indcate an exception, or change return type? }
+    // TODO: if (returned func code == 9) { return error, perhaps a -2 to indcate an exception, or change return type? }
 
 #ifdef DEBUG_PRINT_RX_BUFFER
     _mb_dump_buffer(read_buffer, sizeof(read_buffer), "write responce RX");
@@ -340,4 +342,256 @@ mb_error mb_master_write_multiple_registers(
     ci->header.transaction_identifier += 1;
 
     return 0;
+}
+
+Connection create_tcp_socket_fd(int port)
+{
+    int server_fd, len;
+    struct sockaddr_in server_addr;
+
+    memset(&server_addr, 0, sizeof(server_addr));
+
+    server_fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
+
+    if (0 > server_fd)
+    {
+        perror("socket");
+        exit(EXIT_FAILURE);
+    }
+
+    if (0 > setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int)))
+    {
+        perror("setsockopt");
+        exit(EXIT_FAILURE);
+    }
+
+#ifndef SO_REUSEPORT
+#define SO_REUSEPORT (15) /*my ide is silly or i am idk*/
+#endif
+
+    if (0 > setsockopt(server_fd, SOL_SOCKET, SO_REUSEPORT, &(int){1}, sizeof(int)))
+    {
+        perror("setsockopt");
+        exit(EXIT_FAILURE);
+    }
+
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    server_addr.sin_port = htons(port);
+
+    if (0 > bind(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)))
+    {
+        perror("bind");
+        exit(EXIT_FAILURE);
+    }
+
+    if (0 > listen(server_fd, 3))
+    {
+        perror("listen");
+        exit(EXIT_FAILURE);
+    }
+
+    return (struct Connection){.fd = server_fd, .len = len, .saddr = server_addr};
+}
+
+struct _mb_serverinfo *_mb_svr_get_next_server_info(mb_client *s)
+{
+    for (int i = 0; i < MB_MAX_SERVERS_PER_CLIENT; i++)
+    {
+        if (!s->connection_info[i].inuse)
+            return &s->connection_info[i];
+    }
+    return NULL;
+}
+
+mb_error mb_svr_init(mb_client *s, int16_t *registers, mb_i16 registersCount, int port, mb_i16 nodeId)
+{
+    memset(s, 0, sizeof(mb_client));
+    s->nodeid = nodeId;
+    s->svr = create_tcp_socket_fd(port);
+    s->registers = registers;
+    s->register_count = registersCount;
+}
+
+mb_error _mb_svr_read_i16(struct _mb_serverinfo *s, mb_i16 *out)
+{
+    mb_byte rd[2];
+
+    int in = 0;
+    do
+    {
+
+        int r = read(s->fd, &rd, 2);
+        if (0 > r)
+        {
+            perror("read");
+            return -1;
+        }
+        in += r;
+
+    } while (2 > in);
+
+    *out = rd[1] | rd[0] << 8;
+
+    return 0;
+}
+
+mb_error _mb_svr_write_illeagle_address(mb_client *sv, struct _mb_serverinfo *s)
+{
+    assert(0 && "not impl _mb_svr_write_illeagle_address");
+}
+
+mb_error _mb_svr_do_read_holding_registers(mb_client *sv, struct _mb_serverinfo *s)
+{
+    // read holding registers params in stream   [i16 - first address] [i16 - count]
+
+    mb_i16 first_addr, reg_count;
+
+    if (0 > _mb_svr_read_i16(s, &first_addr))
+        return -1;
+    if (0 > _mb_svr_read_i16(s, &reg_count))
+        return -1;
+
+    // all the data is now streamd out, and we can build and send our responce
+    printf("first %d   count %d\n", first_addr, reg_count);
+
+    if (first_addr + reg_count > sv->register_count)
+    {
+        if (0 > _mb_svr_write_illeagle_address(sv, s))
+        {
+            return -1;
+        }
+    }
+
+
+    mb_byte outbuffer[7+reg_count * sizeof(mb_i16)];
+    memset(outbuffer, 0, sizeof(outbuffer));
+
+    _mb_header(s->header,outbuffer, sizeof(outbuffer));
+    assert("NOT DONE"&0);
+
+
+    for (int i = 0; i < reg_count; i = 2)
+    {
+        mb_i16 *ittr = &sv->registers[first_addr + i];
+        outbuffer[i+8] = *ittr;
+        outbuffer[i+8 + 1] = *ittr >> 8;
+    }
+
+    
+}
+
+mb_error _mb_svr_do_write_holding_registers(mb_client *sv, struct _mb_serverinfo *s)
+{
+}
+
+mb_error _mb_svr_read_and_do_command(mb_client *sv, struct _mb_serverinfo *s)
+{
+
+    char buff[7] = {0};
+    const int want = 7;
+    int in = 0;
+    do
+    {
+        int n = read(s->fd, &buff, sizeof(buff));
+        if (n == -1 && (errno == EAGAIN || errno == EWOULDBLOCK))
+        {
+            return 0; /* nothing to read */
+        }
+
+        if (n == 0 || 0 > n)
+        {
+
+            perror("read");
+            return -1;
+        }
+
+        in += n;
+    } while (want > in);
+    s->header = _mb_header_from_buffer(buff, 7);
+    /* the next bytes should be the func code */
+
+    uint8_t funccode;
+
+    if (0 > read(s->fd, &funccode, 1))
+    {
+        perror("read");
+        return -1;
+    }
+
+    printf("got fncode %d\n", funccode);
+
+    switch (funccode)
+    {
+    case 3:
+        _mb_svr_do_read_holding_registers( sv,s);
+        break;
+    case 15:
+        _mb_svr_do_write_holding_registers(sv,s);
+        break;
+    }
+
+    // just here to get all the bytes out
+    // char tmprdbuf[header.length];
+    // in = 2;
+    // do
+    // {
+    //     int n = read(s->fd, &tmprdbuf, sizeof(tmprdbuf));
+    //     if (n == -1 && (errno == EAGAIN || errno == EWOULDBLOCK))
+    //         return 0; /* nothing to read */
+
+    //     if (n == 0 || 0 > n)
+    //     {
+
+    //         perror("read");
+    //         return -1;
+    //     }
+
+    //     in += n;
+    // } while (header.length > in);
+
+    // printf("dumped %d bytes\n", header.length);
+}
+
+mb_error mb_svr_process_clients(mb_client *s)
+{
+    for (int i = 0; i < MB_MAX_SERVERS_PER_CLIENT; i++)
+    {
+        if (!s->connection_info[i].inuse)
+            continue;
+
+        int rc;
+        if (0 > (rc = _mb_svr_read_and_do_command(s, &s->connection_info[i])))
+        {
+            /*todo: disconnect client and remove */
+        }
+    }
+}
+
+mb_error mb_svr_accept_new_clients(mb_client *s)
+{
+    struct sockaddr_in connection_addr;
+    int connection_addr_len = sizeof(connection_addr);
+
+    memset(&connection_addr, 0, sizeof(connection_addr));
+
+    int connection_fd = accept4(s->svr.fd, (struct sockaddr *)&connection_addr, &connection_addr_len, SOCK_NONBLOCK);
+    if (0 > connection_fd)
+    {
+        if (errno == EWOULDBLOCK || errno == EAGAIN)
+        {
+            return 0; // no work
+        }
+
+        perror("accept");
+        return -1;
+    }
+    printf("accepting client fd: %d\n", connection_fd);
+
+    struct _mb_serverinfo *sslot = _mb_svr_get_next_server_info(s);
+    sslot->addr = connection_addr;
+    sslot->addrlen = connection_addr_len;
+    sslot->fd = connection_fd;
+    sslot->inuse = 1;
+    puts("connection accepted");
 }

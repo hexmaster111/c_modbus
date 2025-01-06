@@ -1,5 +1,7 @@
 
-# THIS IS A WORK IN PROGRESS
+# THIS CODE IS BAD 
+
+# THIS IS A WORK IN PROGRESS (Not ready for anything real)
 - TODO yet
 - [X] Read Holding Registers  (3)
 - [X] Write Multiple Registers (16)
@@ -10,7 +12,9 @@
 - [] Write Single Register
 
 - [] Read and write error function code handling
+- [] make the server and client support blocking and no block modes right now the server is blocking and the clients are nonblocking ...
 
+#
 
 # Requrements
 - Needs a version of C that supports Varable Length Arrays

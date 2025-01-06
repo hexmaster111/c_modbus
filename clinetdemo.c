@@ -7,8 +7,8 @@
 
 int main(int argc, char *argv[])
 {
-    mb_master m;
-    memset(&m, 0, sizeof(mb_master));
+    mb_server m;
+    memset(&m, 0, sizeof(mb_server));
     int client;
     puts("Connecting client");
     if (0 > (client = mb_master_add_client_connection(&m, "192.168.1.6", 502, 1)))
@@ -22,11 +22,11 @@ int main(int argc, char *argv[])
     while (1)
     {
 
-        // if (0 > mb_master_read_holding_registers(&m, client, 1, 2, reg, sizeof(reg) / sizeof(reg[0])))
-        // {
-        //     puts("error reading");
-        //     break;
-        // }
+        if (0 > mb_master_read_holding_registers(&m, client, 1, 2, reg, sizeof(reg) / sizeof(reg[0])))
+        {
+            puts("error reading");
+            break;
+        }
 
         printf("%d, %d\n", reg[0], reg[1]);
         reg[0] += 1;
