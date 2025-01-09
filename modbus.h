@@ -111,7 +111,24 @@ typedef struct mb_client
 
     Connection svr;
 } mb_client;
-mb_error mb_svr_init(mb_client *s, int16_t *registers, mb_i16 registersCount, int port, mb_i16 nodeId);
-mb_error mb_svr_process_clients(mb_client *s);
-mb_error mb_svr_accept_new_clients(mb_client *s);
+
+/*                   SERVER FAM OF METHODS                         */
+
+mb_error mb_svr_init(
+    mb_client *s,          /* the clinet structure to init */
+    int16_t *registers,    /* The registers array that this server is providing  */
+    mb_i16 registersCount, /* the ammount of registers in the <registers> array */
+    int port,              /* the port that this server should listen to */
+    mb_i16 nodeId          /*the node id of this server*/
+);
+
+/* This method check/responds to clients that are trying to read from us */
+mb_error mb_svr_process_clients(
+    mb_client *s /* the client that we want to processes, must have been mb_svr_init'ed */
+);
+
+/* Accepts new clients into a server */
+mb_error mb_svr_accept_new_clients(
+    mb_client *s /* the server that we want to accept new clients into */
+);
 #endif // MODBUS_H
