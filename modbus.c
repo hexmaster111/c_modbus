@@ -600,7 +600,11 @@ mb_error _mb_svr_do_write_holding_registers(mb_client *sv, struct _mb_serverinfo
     } while (remainder > 0);
 
     printf("Got %d bytes\n", payload_size);
+
+#ifdef _mb_dump_buffer_payload_data_DEBUG_PRINT
     _mb_dump_buffer(payload_data, payload_size, "Write Data Bytes");
+#endif
+
 
     /* at this point, we have the data, we should have handled it by now, and we need to send a responce back to the server */
     _mb_svr_set_registers(sv, s, first_reg_addr, reg_count, payload_data, payload_size);
