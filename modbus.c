@@ -544,13 +544,23 @@ mb_error _mb_svr_write_function_code_not_supported(mb_client *sv, struct _mb_ser
         return -1;
 }
 
+/* this method sets the servers register values */
+void _mb_svr_set_registers(
+    mb_client *sv,
+    struct _mb_serverinfo *s,
+    mb_i16 first_address,
+    mb_i16 register_count,
+    mb_i8 *values,
+    int valueslen)
+{
+    for (int i = 0; i < register_count; i++)
+    {
+        sv->registers[i + first_address] = _mb_buffer_out_i16(values + (i * sizeof(mb_i16)));
+    }
+}
+
 mb_error _mb_svr_do_write_holding_registers(mb_client *sv, struct _mb_serverinfo *s)
 {
-    assert(0 && "This is a work in progress! This method seems to fail with 'read: resource temp unavalable' ");
-
-    if (0 > _mb_svr_empty_stream(sv, s))
-        return -1;
-
     // [i16 first reg addr] [i16 register count] [i8 byte count |=> ] [... data ...]
 
     mb_i16 first_reg_addr, reg_count;
@@ -562,7 +572,6 @@ mb_error _mb_svr_do_write_holding_registers(mb_client *sv, struct _mb_serverinfo
     do
     {
         int r = read(s->fd, buf, want);
-        printf("got %d bytes\n", r);
         if (0 > r)
         {
             perror("read");
@@ -571,16 +580,17 @@ mb_error _mb_svr_do_write_holding_registers(mb_client *sv, struct _mb_serverinfo
         want -= r;
     } while (want > 0);
 
-    printf("trashing the rest\n");
-
     first_reg_addr = _mb_buffer_out_i16(buf);
     reg_count = _mb_buffer_out_i16(buf + sizeof(mb_i16));
     remainder = *(buf + sizeof(mb_i16) + sizeof(mb_i16));
+    int payload_size = remainder;
+    mb_i8 payload_data[payload_size];
 
-    mb_i8 trash[remainder];
+    memset(payload_data, 0, payload_size);
+
     do
     {
-        int r = read(s->fd, trash, remainder);
+        int r = read(s->fd, payload_data, remainder);
         if (0 > r)
         {
             perror("read");
@@ -588,6 +598,37 @@ mb_error _mb_svr_do_write_holding_registers(mb_client *sv, struct _mb_serverinfo
         }
         remainder -= r;
     } while (remainder > 0);
+
+    printf("Got %d bytes\n", payload_size);
+    _mb_dump_buffer(payload_data, payload_size, "Write Data Bytes");
+
+    /* at this point, we have the data, we should have handled it by now, and we need to send a responce back to the server */
+    _mb_svr_set_registers(sv, s, first_reg_addr, reg_count, payload_data, payload_size);
+
+    /*header + func code + start + count*/
+    int responce_size = 7 + sizeof(mb_i8) + sizeof(mb_i16) + sizeof(mb_i16);
+    mb_i8 outbuff[responce_size];
+    memset(outbuff, 0xFF, sizeof(outbuff));
+
+    _mb_header(s->header, outbuff, sizeof(outbuff));
+
+    outbuff[7] = 16; /* function code, ~should~ be set by reading in the write methods */
+
+    _mb_buffer_add_i16(outbuff + 7 + 1, first_reg_addr);
+    _mb_buffer_add_i16(outbuff + 7 + 1 + sizeof(mb_i16), reg_count);
+
+    int out = responce_size;
+
+    do
+    {
+        int o = write(s->fd, outbuff, out);
+        if (0 > o)
+        {
+            perror("write");
+            return -1;
+        }
+        out -= o;
+    } while (out > 0);
 
     return 0;
 }
